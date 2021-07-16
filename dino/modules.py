@@ -6,17 +6,15 @@ import numpy as np
 import dino.vision_transformer as vits
 import dino.utils as utils
 from dino.eval_knn import KnnModule
-import torch.distributed as dist
 
-
-class ViLTransformerSS(pl.LightningModule):
+class DINOModel(pl.LightningModule):
     def __init__(self, config):
         super().__init__()
         self.save_hyperparameters()
         self.config = config
         
-        self.token_type_embeddings = nn.Embedding(2, 768)
-
+        #self.token_type_embeddings = nn.Embedding(2, config["hidden_size"])
+        
         student = vits.__dict__[config['arch']](
             patch_size=config['patch_size'],
             drop_path_rate=0.1,  # stochastic depth
@@ -44,14 +42,12 @@ class ViLTransformerSS(pl.LightningModule):
 
         # ============ preparing loss ... ============
         self.dino_loss = utils.DINOLoss(
+            config['nmb_centroids'],
             config['local_crops_number'] + 2,  # total number of crops = 2 global crops + local_crops_number
             config['warmup_teacher_temp'],
             config['teacher_temp'],
             config['warmup_teacher_temp_epoch'],
             config['max_epoch'])
-        self.center = torch.nn.Parameter(
-            torch.zeros(1, config['nmb_centroids']),
-            requires_grad=False)
 
         # for online KNN accuracy
         global_batch_size = utils.get_world_size() * config['per_gpu_batchsize']
@@ -62,29 +58,18 @@ class ViLTransformerSS(pl.LightningModule):
         self.register_buffer("queue_ptr", torch.zeros(1, dtype=torch.long))
         self.register_buffer("queue_labels", torch.zeros(self.num_negatives))
 
-    def configure_optimizers(self):
-        # ============ preparing optimizer ... ============
-        params_groups = utils.get_params_groups(self.student)
-        optimizer = torch.optim.AdamW(params_groups)  # to use with ViTs
-        
-        # ============ init schedulers ... ============
-        data_loader = self.trainer.datamodule.train_dataloader()
-        config = self.config
-        self.lr_schedule = utils.cosine_scheduler(
-            config['learning_rate'] * (config['per_gpu_batchsize'] * utils.get_world_size()) / 256.,  # linear scaling rule
-            config['end_lr'],
-            config['max_epoch'], len(data_loader),
-            warmup_epochs=config['warmup_epoch'])
-        self.wd_schedule = utils.cosine_scheduler(
-            config['weight_decay'],
-            config['weight_decay_end'],
-            config['max_epoch'], len(data_loader))
-        # momentum parameter is increased to 1. during training with a cosine schedule
-        self.momentum_schedule = utils.cosine_scheduler(
-            config['momentum_teacher'], 1,
-            config['max_epoch'], len(data_loader))
-        print(f"Loss, optimizer and schedulers ready.")
-        return optimizer
+    def _enqueue(self, features, labels):
+        ptr = int(self.queue_ptr)
+        batch_size = features.shape[0]
+        final_batch_size = self.queue[:, ptr: ptr + batch_size].shape[1]
+
+        # replace the keys at ptr (dequeue and enqueue)
+        labels = labels[:final_batch_size]
+        features = F.normalize(features[:final_batch_size], dim=1, p=2)
+        self.queue[:, ptr:ptr + batch_size] = features.T
+        self.queue_labels[ptr:ptr + batch_size] = labels
+        ptr = (ptr + batch_size) % self.num_negatives  # move pointer
+        self.queue_ptr[0] = ptr
 
     def compute_dino(self, batch):
         """ The input is image only """
@@ -100,7 +85,7 @@ class ViLTransformerSS(pl.LightningModule):
         images = batch[self.config['dino_img_key']]
         teacher_output, teacher_embs = self.teacher(images[:2])  # only the 2 global views pass through the teacher
         student_output, student_embs = self.student(images)
-        loss, temp = self.dino_loss(student_output, teacher_output, epoch, self.center)
+        loss, temp = self.dino_loss(student_output, teacher_output, epoch)
         
         self.log(f"dino/teacher_temperature", temp)
         phase = "train" if self.training else "val"
@@ -111,14 +96,10 @@ class ViLTransformerSS(pl.LightningModule):
 
         # compute variance
         with torch.no_grad():
-            self.log("dino/loss_center", self.center.mean().item())
+            self.log("dino/center_mean", self.dino_loss.center.mean().item())
             self.log("dino/teacher_var", teacher_embs.var(dim=0).mean().item())
             self.log("dino/student_var", student_embs.var(dim=0).mean().item())
-            teacher_sum = teacher_output.sum(0)
-            dist.all_reduce(teacher_sum)
-            teacher_mean = teacher_sum / (dist.get_world_size() * teacher_output.size(0))
-            self.center.data.mul_(self.dino_loss.center_momentum).add_((1-self.dino_loss.center_momentum) * teacher_mean.data)
-
+        
         return {'loss': loss, 
                 'features': teacher_embs[:images[0].size(0), :].detach(),
                 'labels': torch.tensor(batch[self.config['dino_label_key']]).long().cuda()}
@@ -156,15 +137,26 @@ class ViLTransformerSS(pl.LightningModule):
         self.log('dino/knn_top1', top1, on_step=False, prog_bar=True, on_epoch=True, sync_dist=True)
         self.log('dino/knn_top5', top5, on_step=False, on_epoch=True, sync_dist=True)
 
-    def _enqueue(self, features, labels):
-        ptr = int(self.queue_ptr)
-        batch_size = features.shape[0]
-        final_batch_size = self.queue[:, ptr: ptr + batch_size].shape[1]
-
-        # replace the keys at ptr (dequeue and enqueue)
-        labels = labels[:final_batch_size]
-        features = F.normalize(features[:final_batch_size], dim=1, p=2)
-        self.queue[:, ptr:ptr + batch_size] = features.T
-        self.queue_labels[ptr:ptr + batch_size] = labels
-        ptr = (ptr + batch_size) % self.num_negatives  # move pointer
-        self.queue_ptr[0] = ptr
+    def configure_optimizers(self):
+        # ============ preparing optimizer ... ============
+        params_groups = utils.get_params_groups(self.student)
+        optimizer = torch.optim.AdamW(params_groups)  # to use with ViTs
+        
+        # ============ init schedulers ... ============
+        data_loader = self.trainer.datamodule.train_dataloader()
+        config = self.config
+        self.lr_schedule = utils.cosine_scheduler(
+            config['learning_rate'] * (config['per_gpu_batchsize'] * utils.get_world_size()) / 256.,  # linear scaling rule
+            config['end_lr'],
+            config['max_epoch'], len(data_loader),
+            warmup_epochs=config['warmup_epoch'])
+        self.wd_schedule = utils.cosine_scheduler(
+            config['weight_decay'],
+            config['weight_decay_end'],
+            config['max_epoch'], len(data_loader))
+        # momentum parameter is increased to 1. during training with a cosine schedule
+        self.momentum_schedule = utils.cosine_scheduler(
+            config['momentum_teacher'], 1,
+            config['max_epoch'], len(data_loader))
+        print(f"Loss, optimizer and schedulers ready.")
+        return optimizer

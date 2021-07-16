@@ -3,7 +3,7 @@ import copy
 import pytorch_lightning as pl
 
 from dino.config import ex
-from dino.modules import ViLTransformerSS
+from dino.modules import DINOModel
 from dino.imagenet_datamodule import ImageNetDataModule
 
 @ex.automain
@@ -12,7 +12,7 @@ def main(_config):
     pl.seed_everything(_config["seed"])
 
     dm = ImageNetDataModule(_config)
-    model = ViLTransformerSS(_config)
+    model = DINOModel(_config)
     exp_name = f'{_config["exp_name"]}'
     print('########## RUNNING {} #########'.format(exp_name))
 

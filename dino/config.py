@@ -9,11 +9,36 @@ def config():
     seed = 0
 
     # Dataset setting
+    get_recall_metric = False
+    data_root = ""
+    dataset_ratio = 1 # Between 0 and 1 the ratio of paired image-text
     imagenet_dir = "/datasets01/imagenet_full_size/061417/"
+    datasets = ["imagenet"]
+    train_transform_keys = ["multicrop"]
+    val_transform_keys = ["multicrop"]
     image_size = 224
+    max_image_len = -1
+    draw_false_image = 1
+    image_only = False
+
+    # Text Setting
+    vqav2_label_size = 3129
+    max_text_len = 40
+    tokenizer = "bert-base-uncased"
+    vocab_size = 30522
+    whole_word_masking = False
+    mlm_prob = 0.15
+    draw_false_text = 0
+
     # Model
     patch_size = 16
     arch = "vit_small"
+    vit = "dino_vit_small_patch16_224"
+    hidden_size = 384
+    num_layers = 12
+    num_heads = 6
+    mlp_ratio=4
+    drop_rate=0.1
 
     # Optimizer Setting
     optim_type = "adamw"
@@ -38,6 +63,7 @@ def config():
     num_gpus = 1
     num_nodes = 1
     load_path = ""
+    from_scratch = False # If True then not using pretrained weight, but can still go through load_path
     num_workers = 8
     precision = 16
 

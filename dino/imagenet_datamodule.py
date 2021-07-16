@@ -1,12 +1,11 @@
-import pytorch_lightning as pl
-import os
-import torch
 from torchvision.datasets import ImageFolder
-from torch.utils.data import DataLoader
-
+from torch.utils.data import Dataset, DataLoader
+import os
+from pytorch_lightning import LightningDataModule
 from torchvision import transforms
 from dino.utils import GaussianBlur, Solarization
 from PIL import Image
+
 
 def dinomulticrop(config):
     multicrop = DataAugmentationDINO(
@@ -17,6 +16,7 @@ def dinomulticrop(config):
     )
     return [multicrop.global_transfo1, multicrop.global_transfo2] + \
         [multicrop.local_transfo for _ in range(multicrop.local_crops_number)]
+
 
 class DataAugmentationDINO(object):
     def __init__(self, size, global_crops_scale, local_crops_scale, local_crops_number):
@@ -65,12 +65,13 @@ class MyImageFolder(ImageFolder):
         """ Shrink to desired number of classes results """
         self.samples = [self.samples[i] for i in range(len(self.samples)) if self.samples[i][1] < num_classes]
 
-class ImageNet(torch.utils.data.Dataset):
+class ImageNet(Dataset):
+    prompt_template = "This is a photo of {label}."
     def __init__(self, root, split, transforms, num_classes=1000):
         self.imagefolder = MyImageFolder(
             os.path.join(root, split))
         self.transforms = transforms
-     
+    
         # Use only partial classes to speed up
         self.imagefolder.shrink(num_classes)
         print('Imagenet {} Total images: {}'.format(split, len(self)))
@@ -90,28 +91,39 @@ class ImageNet(torch.utils.data.Dataset):
         ret['imagenet_label'] = label
         return ret
 
-class ImageNetDataModule(pl.LightningDataModule):
+ 
+        
+class ImageNetDataModule(LightningDataModule):
     def __init__(self, _config):
         super().__init__()
-        self.root = _config.get('imagenet_dir', None)
-        self.train_transforms = dinomulticrop(_config)
-        self.val_transforms = dinomulticrop(_config)
         self.num_workers = _config["num_workers"]
         self.batch_size = _config["per_gpu_batchsize"]
         self.eval_batch_size = self.batch_size
-
-    def setup(self, stage=None):
+        self.root =  _config.get('imagenet_dir', None)
+        
+        self.train_transforms = dinomulticrop(_config)
+        self.val_transforms = dinomulticrop(_config)
+        self.setup_flag = False
+        
+    def set_train_dataset(self):
         self.train_dataset = ImageNet(
             root=self.root, split='train',
             transforms=self.train_transforms)
 
+    def set_val_dataset(self):
         self.val_dataset = ImageNet(
             root=self.root, split='val', 
             transforms=self.val_transforms)
 
+    def set_test_dataset(self):
         self.test_dataset = ImageNet(
             root=self.root, split='val', 
             transforms=self.val_transforms)
+
+    def setup(self, stage):
+        self.set_train_dataset()
+        self.set_val_dataset()
+        self.set_test_dataset()
 
     def train_dataloader(self):
         loader = DataLoader(
