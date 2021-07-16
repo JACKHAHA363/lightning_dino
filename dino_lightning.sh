@@ -12,7 +12,7 @@ PYTHONBIN=/data/home/lyuchen/miniconda/envs/vilt/bin/python
 echo "Running on `hostname`"
 $PYTHONBIN run_dino.py with \
 	num_workers=12 \
-	exp_name=debug_8gpu num_gpus=8 num_nodes=1 \
+	exp_name=debug_8gpu_collapsing num_gpus=8 num_nodes=1 \
 	seed=0
 
 #$PYTHONBIN run_dino.py with \
