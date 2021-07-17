@@ -13,7 +13,7 @@ class DINOModel(pl.LightningModule):
         self.save_hyperparameters()
         self.config = config
         
-        #self.token_type_embeddings = nn.Embedding(2, config["hidden_size"])
+        self.token_type_embeddings = nn.Embedding(2, config["hidden_size"])
         
         student = vits.__dict__[config['arch']](
             patch_size=config['patch_size'],
@@ -96,7 +96,11 @@ class DINOModel(pl.LightningModule):
 
         # compute variance
         with torch.no_grad():
+            last_layer = self.student.head.last_layer
+            self.log("dino/last_layer_norm_avg", last_layer.weight_g.mean().item())
+            self.log("dino/last_layer_direction_var", last_layer.weight_v.var(dim=0).mean().item())
             self.log("dino/center_mean", self.dino_loss.center.mean().item())
+            self.log("dino/center_var", self.dino_loss.center.var().item())
             self.log("dino/teacher_var", teacher_embs.var(dim=0).mean().item())
             self.log("dino/student_var", student_embs.var(dim=0).mean().item())
         
