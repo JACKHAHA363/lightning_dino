@@ -1,9 +1,9 @@
 #!/bin/bash
 #SBATCH --partition=a100
-#SBATCH --gres=gpu:1
-#SBATCH --ntasks-per-node=1
+#SBATCH --gres=gpu:4
+#SBATCH --ntasks-per-node=4
 #SBATCH --cpus-per-task=10
-#SBATCH --nodes=4
+#SBATCH --nodes=1
 #SBATCH --time=24:00:00
 #SBATCH --signal=SIGUSR1@120
 #SBATCH --exclude=a100-st-p4d24xlarge-35
@@ -13,7 +13,7 @@ PYTHONBIN=/data/home/lyuchen/miniconda/envs/vilt/bin/python
 echo "Running on `hostname`"
 srun $PYTHONBIN run_dino.py with \
 	num_workers=12 \
-	exp_name=collpase_4gpu num_gpus=1 num_nodes=4 \
+	exp_name=extra_param_unused_4gpu num_gpus=4 num_nodes=1 \
 	seed=1234
 
 #$PYTHONBIN run_dino.py with \

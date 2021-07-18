@@ -20,6 +20,7 @@ from functools import partial
 
 import torch
 import torch.nn as nn
+from torch.nn.modules.sparse import Embedding
 
 from dino.utils import trunc_normal_
 
@@ -138,7 +139,8 @@ class VisionTransformer(nn.Module):
                  drop_path_rate=0., norm_layer=nn.LayerNorm, **kwargs):
         super().__init__()
         self.num_features = self.embed_dim = embed_dim
-
+        self.token_type_embedding = Embedding(2, embed_dim)
+        
         self.patch_embed = PatchEmbed(
             img_size=img_size[0], patch_size=patch_size, in_chans=in_chans, embed_dim=embed_dim)
         num_patches = self.patch_embed.num_patches

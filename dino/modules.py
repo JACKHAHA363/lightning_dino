@@ -12,9 +12,7 @@ class DINOModel(pl.LightningModule):
         super().__init__()
         self.save_hyperparameters()
         self.config = config
-        
-        self.token_type_embeddings = nn.Embedding(2, config["hidden_size"])
-        
+                
         student = vits.__dict__[config['arch']](
             patch_size=config['patch_size'],
             drop_path_rate=0.1,  # stochastic depth
