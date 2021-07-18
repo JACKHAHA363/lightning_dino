@@ -162,6 +162,7 @@ class VisionTransformer(nn.Module):
 
         trunc_normal_(self.pos_embed, std=.02)
         trunc_normal_(self.cls_token, std=.02)
+        trunc_normal_(self.token_type_embedding.weight, std=.02)
         self.apply(self._init_weights)
 
     def _init_weights(self, m):
@@ -204,7 +205,8 @@ class VisionTransformer(nn.Module):
         x = torch.cat((cls_tokens, x), dim=1)
 
         # add positional encoding to each token
-        x = x + self.interpolate_pos_encoding(x, w, h)
+        type_emb = self.token_type_embedding(torch.zeros(*x.shape[:2]).long().to(x.device))
+        x = x + self.interpolate_pos_encoding(x, w, h) + type_emb
 
         return self.pos_drop(x)
 

@@ -6,14 +6,14 @@
 #SBATCH --nodes=1
 #SBATCH --time=24:00:00
 #SBATCH --signal=SIGUSR1@120
-#SBATCH --exclude=a100-st-p4d24xlarge-35
+#SBATCH --exclude=a100-st-p4d24xlarge-21
 
 export NCCL_NET_SHARED_BUFFERS=0
 PYTHONBIN=/data/home/lyuchen/miniconda/envs/vilt/bin/python
 echo "Running on `hostname`"
 srun $PYTHONBIN run_dino.py with \
 	num_workers=12 \
-	exp_name=extra_param_unused_4gpu num_gpus=4 num_nodes=1 \
+	exp_name=extra_param_used_4gpu num_gpus=4 num_nodes=1 \
 	seed=1234
 
 #$PYTHONBIN run_dino.py with \
