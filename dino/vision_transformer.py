@@ -24,6 +24,16 @@ import torch.nn as nn
 from dino.utils import trunc_normal_
 
 
+def init_weights(module):
+    if isinstance(module, (nn.Linear, nn.Embedding)):
+        trunc_normal_(module.weight, std=0.02)
+    elif isinstance(module, nn.LayerNorm):
+        module.bias.data.zero_()
+        module.weight.data.fill_(1.0)
+    if isinstance(module, nn.Linear) and module.bias is not None:
+        module.bias.data.zero_()
+
+
 def drop_path(x, drop_prob: float = 0., training: bool = False):
     if drop_prob == 0. or not training:
         return x
@@ -77,12 +87,15 @@ class Attention(nn.Module):
         self.proj = nn.Linear(dim, dim)
         self.proj_drop = nn.Dropout(proj_drop)
 
-    def forward(self, x):
+    def forward(self, x, mask=None):
         B, N, C = x.shape
         qkv = self.qkv(x).reshape(B, N, 3, self.num_heads, C // self.num_heads).permute(2, 0, 3, 1, 4)
         q, k, v = qkv[0], qkv[1], qkv[2]
 
         attn = (q @ k.transpose(-2, -1)) * self.scale
+        if mask is not None:
+            mask = mask.bool()
+            attn = attn.masked_fill(~mask[:, None, None, :], float("-inf"))
         attn = attn.softmax(dim=-1)
         attn = self.attn_drop(attn)
 
@@ -104,8 +117,8 @@ class Block(nn.Module):
         mlp_hidden_dim = int(dim * mlp_ratio)
         self.mlp = Mlp(in_features=dim, hidden_features=mlp_hidden_dim, act_layer=act_layer, drop=drop)
 
-    def forward(self, x, return_attention=False):
-        y, attn = self.attn(self.norm1(x))
+    def forward(self, x, mask=None, return_attention=False):
+        y, attn = self.attn(self.norm1(x), mask=mask)
         if return_attention:
             return attn
         x = x + self.drop_path(y)
@@ -289,3 +302,17 @@ class DINOHead(nn.Module):
         x = nn.functional.normalize(x, dim=-1, p=2)
         x = self.last_layer(x)
         return x
+
+class DINOMLMHead(DINOHead):
+    def __init__(self, in_dim, out_dim, use_bn=False, norm_last_layer=True, nlayers=3, hidden_dim=2048, bottleneck_dim=256, last_layer=None):
+        super().__init__(in_dim, out_dim, use_bn=use_bn, norm_last_layer=norm_last_layer, nlayers=nlayers, hidden_dim=hidden_dim, bottleneck_dim=bottleneck_dim)
+        if last_layer is not None:
+            # Share weights
+            assert last_layer.weight_v.shape[0] >= out_dim
+            self.last_layer = last_layer
+        self.out_dim = out_dim
+
+    def forward(self, x):
+        res = super().forward(x)
+        # Slice last dimension to have correct output dimension
+        return res[..., :self.out_dim]

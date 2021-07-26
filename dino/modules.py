@@ -6,6 +6,7 @@ import numpy as np
 import dino.vision_transformer as vits
 import dino.utils as utils
 from dino.eval_knn import KnnModule
+from transformers.models.bert.modeling_bert import BertConfig, BertEmbeddings
 
 class DINOModel(pl.LightningModule):
     def __init__(self, config):
@@ -54,6 +55,27 @@ class DINOModel(pl.LightningModule):
         self.queue = F.normalize(self.queue, dim=0)
         self.register_buffer("queue_ptr", torch.zeros(1, dtype=torch.long))
         self.register_buffer("queue_labels", torch.zeros(self.num_negatives))
+
+        # MLM
+        self.use_mlm = config['text_dataset'] is not None
+        if self.use_mlm:
+            bert_config = BertConfig(
+                vocab_size=config["vocab_size"],
+                hidden_size=config["hidden_size"],
+                num_hidden_layers=config["num_layers"],
+                num_attention_heads=config["num_heads"],
+                intermediate_size=config["hidden_size"] * config["mlp_ratio"],
+                max_position_embeddings=config["max_text_len"],
+                hidden_dropout_prob=config["drop_rate"],
+                attention_probs_dropout_prob=config["drop_rate"],
+            )
+            self.text_embeddings = BertEmbeddings(bert_config)
+            self.text_embeddings.apply(vits.init_weights)
+            self.mlm_head = vits.DINOMLMHead(
+                embed_dim, 
+                config['vocab_size'],
+                norm_last_layer=config['norm_last_layer'],
+                last_layer=self.student.head.last_layer)
 
     def _enqueue(self, features, labels):
         ptr = int(self.queue_ptr)
@@ -104,9 +126,33 @@ class DINOModel(pl.LightningModule):
         return {'loss': loss, 
                 'features': teacher_embs[:images[0].size(0), :].detach(),
                 'labels': torch.tensor(batch[self.config['dino_label_key']]).long().cuda()}
-    
-    def training_step(self, batch, batch_idx):
+
+    def compute_mlm(self, batch):
+        text_ids = batch[f"text_ids_mlm"]
+        text_labels = batch[f"text_labels_mlm"]
+        text_masks = batch[f"text_masks"]
+        text_embeds = self.text_embeddings(text_ids)
+        backbone = self.student.backbone
+        x = text_embeds
+        for blk in backbone.blocks:
+            x = blk(x, mask=text_masks)
+        x = backbone.norm(x)
+        mlm_logits = self.mlm_head(x)
+        mlm_loss = F.cross_entropy(
+                    mlm_logits.view(-1, self.config["vocab_size"]),
+                    text_labels.view(-1), ignore_index=-100)
+        phase = "train" if self.training else "val"
+        self.log(f"mlm/{phase}/loss", mlm_loss.item())
+        return {'mlm_loss': mlm_loss}
+
+    def forward(self, batch):
         output = self.compute_dino(batch)
+        if self.use_mlm:
+            output.update(self.compute_mlm(batch))
+        return output
+
+    def training_step(self, batch, batch_idx):
+        output = self.forward(batch)
         total_loss = sum([v for k, v in output.items() if "loss" in k])
 
         # enqueue only one view
@@ -129,7 +175,7 @@ class DINOModel(pl.LightningModule):
                 param_k.data.mul_(m).add_((1 - m) * param_q.detach().data)
  
     def validation_step(self, batch, batch_idx):
-        output = self.compute_dino(batch)
+        output = self.forward(batch)
         test_labels = output['labels']
         test_features = output['features']
         test_features = F.normalize(test_features, dim=1, p=2)

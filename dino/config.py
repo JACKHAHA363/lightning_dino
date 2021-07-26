@@ -5,7 +5,6 @@ ex = Experiment("DINO")
 @ex.config
 def config():
     exp_name = "config"
-    loss_names = {'dino': 1}
     seed = 0
 
     # Dataset setting
@@ -86,3 +85,7 @@ def config():
     local_crops_scale = [0.05, 0.4]
     local_crops_number = 8
     momentum_teacher = 0.996
+
+@ex.named_config
+def task_dino_mlm():
+    text_dataset = 'cc'
