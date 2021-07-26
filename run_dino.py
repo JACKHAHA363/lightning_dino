@@ -20,7 +20,7 @@ def main(_config):
     checkpoint_callback = pl.callbacks.ModelCheckpoint(
         save_top_k=1,
         verbose=True,
-        monitor="val/the_metric",
+        monitor="val/knn_top1",
         mode="max",
         save_last=True,
     )

@@ -47,15 +47,6 @@ class DINOModel(pl.LightningModule):
             config['warmup_teacher_temp_epoch'],
             config['max_epoch'])
 
-        # for online KNN accuracy
-        global_batch_size = utils.get_world_size() * config['per_gpu_batchsize']
-        self.num_negatives = global_batch_size * 100
-        self.num_classes = 1000
-        self.register_buffer("queue", torch.randn(embed_dim, self.num_negatives))
-        self.queue = F.normalize(self.queue, dim=0)
-        self.register_buffer("queue_ptr", torch.zeros(1, dtype=torch.long))
-        self.register_buffer("queue_labels", torch.zeros(self.num_negatives))
-
         # MLM
         self.use_mlm = config['text_dataset'] is not None
         if self.use_mlm:
@@ -77,18 +68,20 @@ class DINOModel(pl.LightningModule):
                 norm_last_layer=config['norm_last_layer'],
                 last_layer=self.student.head.last_layer)
 
-    def _enqueue(self, features, labels):
-        ptr = int(self.queue_ptr)
-        batch_size = features.shape[0]
-        final_batch_size = self.queue[:, ptr: ptr + batch_size].shape[1]
+    def on_train_epoch_start(self) -> None:
+        # Init local memory for online KNN Eval
+        self.knn_feats = []
+        self.knn_labels = []
 
-        # replace the keys at ptr (dequeue and enqueue)
-        labels = labels[:final_batch_size]
-        features = F.normalize(features[:final_batch_size], dim=1, p=2)
-        self.queue[:, ptr:ptr + batch_size] = features.T
-        self.queue_labels[ptr:ptr + batch_size] = labels
-        ptr = (ptr + batch_size) % self.num_negatives  # move pointer
-        self.queue_ptr[0] = ptr
+    def on_validation_epoch_start(self):
+        # At the start of val epoch, make KNN ready
+        self.knn_feats = torch.cat(self.knn_feats)
+        self.knn_labels = torch.cat(self.knn_labels)
+
+    def _enqueue(self, features, labels):
+        features = F.normalize(features, dim=1, p=2)
+        self.knn_feats.append(features)
+        self.knn_labels.append(labels)
 
     def compute_dino(self, batch):
         """ The input is image only """
@@ -173,16 +166,17 @@ class DINOModel(pl.LightningModule):
             m = self.momentum_schedule[self.trainer.global_step]  # momentum parameter
             for param_q, param_k in zip(self.student.parameters(), self.teacher.parameters()):
                 param_k.data.mul_(m).add_((1 - m) * param_q.detach().data)
- 
+
     def validation_step(self, batch, batch_idx):
         output = self.forward(batch)
         test_labels = output['labels']
         test_features = output['features']
         test_features = F.normalize(test_features, dim=1, p=2)
-        top1, top5 = KnnModule.do_knn_step(self.queue, self.queue_labels, test_features, test_labels,
-                                           T=0.07, k=20, num_classes=self.num_classes)
-        self.log('dino/knn_top1', top1, on_step=False, prog_bar=True, on_epoch=True, sync_dist=True)
-        self.log('dino/knn_top5', top5, on_step=False, on_epoch=True, sync_dist=True)
+        K = 20
+        top1, top5 = KnnModule.do_knn_step(self.knn_feats.T, self.knn_labels, test_features, test_labels,
+                                           T=0.07, k=K, num_classes=1000)
+        self.log(f'val/{K}nn_top1_', top1, on_step=False, prog_bar=True, on_epoch=True, sync_dist=True)
+        self.log(f'val/{K}nn_top5', top5, on_step=False, on_epoch=True, sync_dist=True)
 
     def configure_optimizers(self):
         # ============ preparing optimizer ... ============

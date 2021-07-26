@@ -208,7 +208,8 @@ class ImageNetDataModule(LightningDataModule):
             shuffle=True,
             num_workers=self.num_workers,
             pin_memory=True,
-            collate_fn=self.collate_fn
+            collate_fn=self.collate_fn,
+            drop_last=True,
         )
         return loader
 
@@ -219,7 +220,8 @@ class ImageNetDataModule(LightningDataModule):
             shuffle=False,
             num_workers=self.num_workers,
             pin_memory=True,
-            collate_fn=self.collate_fn
+            collate_fn=self.collate_fn,
+            drop_last=True,
         )
         return loader
 
@@ -230,7 +232,8 @@ class ImageNetDataModule(LightningDataModule):
             shuffle=False,
             num_workers=self.num_workers,
             pin_memory=True,
-            collate_fn=self.collate_fn
+            collate_fn=self.collate_fn,
+            drop_last=True,
         )
         return loader
 

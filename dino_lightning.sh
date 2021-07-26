@@ -17,6 +17,6 @@ echo "Running on `hostname`"
 #	seed=1234
 
 $PYTHONBIN run_dino.py with data_root=/data/home/lyuchen/scratch2/vilt_dataset \
-	num_workers=0 task_dino_mlm \
+	num_workers=12 \
 	exp_name=dino_imagenet/debug \
 	num_gpus=1 num_nodes=1 fast_dev_run=5
