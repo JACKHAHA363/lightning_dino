@@ -22,11 +22,12 @@ def config():
     image_only = False
 
     # Text Setting
+    text_dataset = None
     vqav2_label_size = 3129
     max_text_len = 40
     tokenizer = "bert-base-uncased"
     vocab_size = 30522
-    whole_word_masking = False
+    whole_word_masking = True
     mlm_prob = 0.15
     draw_false_text = 0
 
