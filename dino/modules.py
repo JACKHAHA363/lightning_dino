@@ -7,6 +7,7 @@ import dino.vision_transformer as vits
 import dino.utils as utils
 from dino.eval_knn import KnnModule
 from transformers.models.bert.modeling_bert import BertConfig, BertEmbeddings
+from sklearn.metrics import normalized_mutual_info_score
 
 class DINOModel(pl.LightningModule):
     def __init__(self, config):
@@ -74,9 +75,19 @@ class DINOModel(pl.LightningModule):
         self.knn_labels = []
 
     def on_validation_epoch_start(self):
-        # At the start of val epoch, make KNN ready
+        # For online KNN
         self.knn_feats = torch.cat(self.knn_feats)
         self.knn_labels = torch.cat(self.knn_labels)
+
+        # For NMI
+        self.val_labels = []
+        self.val_cluster_assignments = []
+
+    def on_validation_epoch_end(self):
+        self.val_labels = torch.cat(self.val_labels).cpu()
+        self.val_cluster_assignments = torch.cat(self.val_cluster_assignments).cpu()
+        nmi = normalized_mutual_info_score(labels_true=self.val_labels, labels_pred=self.val_cluster_assignments)
+        self.log('val/nmi', nmi, on_step=False, on_epoch=True, sync_dist=True, prog_bar=True)
 
     def _enqueue(self, features, labels):
         features = F.normalize(features, dim=1, p=2)
@@ -115,9 +126,9 @@ class DINOModel(pl.LightningModule):
             self.log("dino/center_var", self.dino_loss.center.var().item())
             self.log("dino/teacher_var", teacher_embs.var(dim=0).mean().item())
             self.log("dino/student_var", student_embs.var(dim=0).mean().item())
-        
         return {'loss': loss, 
                 'features': teacher_embs[:images[0].size(0), :].detach(),
+                'cluster_assignments': teacher_output[:images[0].size(0), :].argmax(-1).detach(),
                 'labels': torch.tensor(batch[self.config['dino_label_key']]).long().cuda()}
 
     def compute_mlm(self, batch):
@@ -175,8 +186,12 @@ class DINOModel(pl.LightningModule):
         K = 20
         top1, top5 = KnnModule.do_knn_step(self.knn_feats.T, self.knn_labels, test_features, test_labels,
                                            T=0.07, k=K, num_classes=1000)
-        self.log(f'val/{K}nn_top1_', top1, on_step=False, prog_bar=True, on_epoch=True, sync_dist=True)
+        self.log(f'val/{K}nn_top1', top1, on_step=False, prog_bar=True, on_epoch=True, sync_dist=True)
         self.log(f'val/{K}nn_top5', top5, on_step=False, on_epoch=True, sync_dist=True)
+
+        # Compute NMI
+        self.val_labels.append(test_labels)
+        self.val_cluster_assignments.append(output['cluster_assignments'])
 
     def configure_optimizers(self):
         # ============ preparing optimizer ... ============
