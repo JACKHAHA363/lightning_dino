@@ -13,8 +13,8 @@ echo "Running on `hostname`"
 srun $PYTHONBIN run_dino.py with \
 	data_root=/data/home/lyuchen/scratch2/vilt_dataset \
 	num_workers=12 \
-    exp_name=dino num_gpus=2 num_nodes=4 \
-	seed=1234 max_epoch=50
+    exp_name=dino_mlm num_gpus=2 num_nodes=4 \
+	seed=1234 max_epoch=50 task_dino_mlm
 
 #$PYTHONBIN run_dino.py with data_root=/data/home/lyuchen/scratch2/vilt_dataset \
 #	num_workers=12 \
