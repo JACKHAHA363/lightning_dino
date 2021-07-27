@@ -186,8 +186,8 @@ class DINOModel(pl.LightningModule):
         K = 20
         top1, top5 = KnnModule.do_knn_step(self.knn_feats.T, self.knn_labels, test_features, test_labels,
                                            T=0.07, k=K, num_classes=1000)
-        self.log(f'val/{K}nn_top1', top1, on_step=False, prog_bar=True, on_epoch=True, sync_dist=True)
-        self.log(f'val/{K}nn_top5', top5, on_step=False, on_epoch=True, sync_dist=True)
+        self.log(f'val/knn_top1', top1, on_step=False, prog_bar=True, on_epoch=True, sync_dist=True)
+        self.log(f'val/knn_top5', top5, on_step=False, on_epoch=True, sync_dist=True)
 
         # Compute NMI
         self.val_labels.append(test_labels)

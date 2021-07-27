@@ -39,6 +39,7 @@ def main(_config):
         benchmark=True,
         deterministic=True,
         max_epochs=_config["max_epoch"],
+        num_sanity_val_steps=0,
         callbacks=callbacks,
         logger=logger,
         prepare_data_per_node=False,
