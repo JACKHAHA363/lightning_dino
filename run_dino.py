@@ -12,6 +12,7 @@ def main(_config):
     pl.seed_everything(_config["seed"])
 
     dm = ImageNetDataModule(_config)
+    _config['num_samples'] = dm.num_samples
     model = DINOModel(_config)
     exp_name = f'{_config["exp_name"]}'
     print('########## RUNNING {} #########'.format(exp_name))

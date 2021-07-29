@@ -70,6 +70,24 @@ class DINOModel(pl.LightningModule):
                 last_layer=self.student.head.last_layer)
 
         # Schedules
+        # ============ init schedulers ... ============
+        global_batch_size = config['num_gpus'] * config['num_nodes'] * config['per_gpu_batchsize']
+        print('########## global_batch_size', global_batch_size)
+        train_iters_per_epoch = config['num_samples'] // global_batch_size
+        self.lr_schedule = utils.cosine_scheduler(
+            config['learning_rate'] * global_batch_size / 256.,  # linear scaling rule
+            config['end_lr'],
+            config['max_epoch'], train_iters_per_epoch,
+            warmup_epochs=config['warmup_epoch'])
+        self.wd_schedule = utils.cosine_scheduler(
+            config['weight_decay'],
+            config['weight_decay_end'],
+            config['max_epoch'], train_iters_per_epoch)
+        # momentum parameter is increased to 1. during training with a cosine schedule
+        self.momentum_schedule = utils.cosine_scheduler(
+            config['momentum_teacher'], 1,
+            config['max_epoch'], train_iters_per_epoch)
+        print(f"Loss, optimizer and schedulers ready.")
 
     def on_train_epoch_start(self) -> None:
         # Init local memory for online KNN Eval
@@ -105,8 +123,8 @@ class DINOModel(pl.LightningModule):
             param_group["lr"] = self.lr_schedule[it]
             if i == 0:  # only the first group is regularized
                 param_group["weight_decay"] = self.wd_schedule[it]
-            self.log(f"lr-AdamW/pg{i+1}", param_group['lr'])
-        
+        self.log(f"train/lr", self.lr_schedule[it])
+
         images = batch[self.config['dino_img_key']]
         teacher_output, teacher_embs = self.teacher(images[:2])  # only the 2 global views pass through the teacher
         student_output, student_embs = self.student(images)
@@ -199,23 +217,4 @@ class DINOModel(pl.LightningModule):
         # ============ preparing optimizer ... ============
         params_groups = utils.get_params_groups(self.student)
         optimizer = torch.optim.AdamW(params_groups)  # to use with ViTs
-        
-        # ============ init schedulers ... ============
-        config = self.config
-        global_batch_size = utils.get_world_size() * config['per_gpu_batchsize']
-        train_iters_per_epoch = len(self.trainer.datamodule.train_dataloader()) // global_batch_size
-        self.lr_schedule = utils.cosine_scheduler(
-            config['learning_rate'] * (config['per_gpu_batchsize'] * utils.get_world_size()) / 256.,  # linear scaling rule
-            config['end_lr'],
-            config['max_epoch'], train_iters_per_epoch,
-            warmup_epochs=config['warmup_epoch'])
-        self.wd_schedule = utils.cosine_scheduler(
-            config['weight_decay'],
-            config['weight_decay_end'],
-            config['max_epoch'], train_iters_per_epoch)
-        # momentum parameter is increased to 1. during training with a cosine schedule
-        self.momentum_schedule = utils.cosine_scheduler(
-            config['momentum_teacher'], 1,
-            config['max_epoch'], train_iters_per_epoch)
-        print(f"Loss, optimizer and schedulers ready.")
         return optimizer

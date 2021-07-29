@@ -13,8 +13,8 @@ def config():
     dataset_ratio = 1 # Between 0 and 1 the ratio of paired image-text
     imagenet_dir = "/datasets01/imagenet_full_size/061417/"
     datasets = ["imagenet"]
-    train_transform_keys = ["multicrop"]
-    val_transform_keys = ["multicrop"]
+    train_transform = "multicrop"
+    val_transform = "multicrop"
     image_size = 224
     max_image_len = -1
     draw_false_image = 1
