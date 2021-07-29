@@ -1,8 +1,8 @@
 #!/bin/bash
 #SBATCH --partition=a100
-#SBATCH --gres=gpu:4
-#SBATCH --ntasks-per-node=4
-#SBATCH --cpus-per-task=10
+#SBATCH --gres=gpu:2
+#SBATCH --ntasks-per-node=2
+#SBATCH --cpus-per-task=12
 #SBATCH --nodes=4
 #SBATCH --time=48:00:00
 #SBATCH --signal=SIGUSR1@120
@@ -13,8 +13,9 @@ echo "Running on `hostname`"
 srun $PYTHONBIN run_dino.py with \
 	data_root=/data/home/lyuchen/scratch2/vilt_dataset \
 	num_workers=12 \
-    exp_name=dino_16gpu num_gpus=4 num_nodes=4 \
-	seed=1234 max_epoch=100 task_dino
+    exp_name=dino_mlm num_gpus=2 num_nodes=4 \
+	seed=1234 max_epoch=50 task_dino_mlm \
+	resume_from=result/dino_mlm/version_0/checkpoints/last.ckpt
 
 #$PYTHONBIN run_dino.py with data_root=/data/home/lyuchen/scratch2/vilt_dataset \
 #	num_workers=12 \
