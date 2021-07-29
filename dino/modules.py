@@ -69,6 +69,8 @@ class DINOModel(pl.LightningModule):
                 norm_last_layer=config['norm_last_layer'],
                 last_layer=self.student.head.last_layer)
 
+        # Schedules
+
     def on_train_epoch_start(self) -> None:
         # Init local memory for online KNN Eval
         self.knn_feats = []
@@ -185,7 +187,7 @@ class DINOModel(pl.LightningModule):
         test_features = F.normalize(test_features, dim=1, p=2)
         K = 20
         top1, top5 = KnnModule.do_knn_step(self.knn_feats.T, self.knn_labels, test_features, test_labels,
-                                           T=0.07, k=K, num_classes=1000)
+                                           T=self.config['knn_temp'], k=self.config['nb_knn'], num_classes=1000)
         self.log(f'val/knn_top1', top1, on_step=False, prog_bar=True, on_epoch=True, sync_dist=True)
         self.log(f'val/knn_top5', top5, on_step=False, on_epoch=True, sync_dist=True)
 
@@ -199,20 +201,21 @@ class DINOModel(pl.LightningModule):
         optimizer = torch.optim.AdamW(params_groups)  # to use with ViTs
         
         # ============ init schedulers ... ============
-        data_loader = self.trainer.datamodule.train_dataloader()
         config = self.config
+        global_batch_size = utils.get_world_size() * config['per_gpu_batchsize']
+        train_iters_per_epoch = len(self.trainer.datamodule.train_dataloader()) // global_batch_size
         self.lr_schedule = utils.cosine_scheduler(
             config['learning_rate'] * (config['per_gpu_batchsize'] * utils.get_world_size()) / 256.,  # linear scaling rule
             config['end_lr'],
-            config['max_epoch'], len(data_loader),
+            config['max_epoch'], train_iters_per_epoch,
             warmup_epochs=config['warmup_epoch'])
         self.wd_schedule = utils.cosine_scheduler(
             config['weight_decay'],
             config['weight_decay_end'],
-            config['max_epoch'], len(data_loader))
+            config['max_epoch'], train_iters_per_epoch)
         # momentum parameter is increased to 1. during training with a cosine schedule
         self.momentum_schedule = utils.cosine_scheduler(
             config['momentum_teacher'], 1,
-            config['max_epoch'], len(data_loader))
+            config['max_epoch'], train_iters_per_epoch)
         print(f"Loss, optimizer and schedulers ready.")
         return optimizer
