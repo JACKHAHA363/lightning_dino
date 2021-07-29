@@ -86,6 +86,10 @@ def config():
     local_crops_number = 8
     momentum_teacher = 0.996
 
+    # KNN eval
+    nb_knn = 20
+    knn_temp = 0.07
+
 @ex.named_config
 def task_dino_mlm():
     text_dataset = 'cc'
