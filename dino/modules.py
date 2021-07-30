@@ -67,7 +67,7 @@ class DINOModel(pl.LightningModule):
                 embed_dim, 
                 config['vocab_size'],
                 norm_last_layer=config['norm_last_layer'],
-                #last_layer=self.student.head.last_layer,
+                last_layer=self.student.head.last_layer,
                 )
 
         # Schedules
@@ -162,7 +162,7 @@ class DINOModel(pl.LightningModule):
         for blk in backbone.blocks:
             x = blk(x, mask=text_masks)
         x = backbone.norm(x)
-        mlm_logits = self.mlm_head(x)
+        mlm_logits = self.mlm_head(x) / 0.04
         mlm_loss = F.cross_entropy(
                     mlm_logits.view(-1, self.config["vocab_size"]),
                     text_labels.view(-1), ignore_index=-100)
