@@ -67,7 +67,8 @@ class DINOModel(pl.LightningModule):
                 embed_dim, 
                 config['vocab_size'],
                 norm_last_layer=config['norm_last_layer'],
-                last_layer=self.student.head.last_layer)
+                #last_layer=self.student.head.last_layer,
+                )
 
         # Schedules
         # ============ init schedulers ... ============
