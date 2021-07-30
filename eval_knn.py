@@ -138,17 +138,7 @@ class KnnModule(pl.LightningModule):
 def main(_config):
     _config = copy.deepcopy(_config)
     pl.seed_everything(_config["seed"])
-
-    transforms = pth_transforms.Compose([
-        pth_transforms.Resize(256, interpolation=3),
-        pth_transforms.CenterCrop(224),
-        pth_transforms.ToTensor(),
-        pth_transforms.Normalize((0.485, 0.456, 0.406), (0.229, 0.224, 0.225)),
-    ])
-
     dm = ImageNetDataModule(_config)
-    dm.train_transforms = [transforms]
-    dm.val_transforms = [transforms]
     knn = KnnModule(
         K=_config['nb_knn'],
         t=_config['knn_temp'],
@@ -162,6 +152,5 @@ def main(_config):
         max_epochs=1, 
         num_sanity_val_steps=0,
         accelerator='ddp',
-        precision=_config['precision'],
         fast_dev_run=_config['fast_dev_run'])
     trainer.fit(knn, dm)

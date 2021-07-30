@@ -24,15 +24,16 @@ def get_pretrained_tokenizer(from_pretrained):
         from_pretrained, do_lower_case="uncased" in from_pretrained
     )
 
-
-def key_to_transforms(key):
-    return {'multicrop': dinomulticrop,
-            'normal': [pth_transforms.Compose([
+def normal(config):
+    return [pth_transforms.Compose([
                        pth_transforms.Resize(256, interpolation=3),
                        pth_transforms.CenterCrop(224),
                        pth_transforms.ToTensor(),
-                       pth_transforms.Normalize((0.485, 0.456, 0.406), (0.229, 0.224, 0.225))]),
-                       ]}[key]
+                       pth_transforms.Normalize((0.485, 0.456, 0.406), (0.229, 0.224, 0.225))])]
+
+def key_to_transforms(key):
+    return {'multicrop': dinomulticrop,
+            'normal': normal}[key]
 
 class ImageNetDataModule(LightningDataModule):
     def __init__(self, _config):
