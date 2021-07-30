@@ -5,7 +5,7 @@ import pytorch_lightning as pl
 import numpy as np
 import dino.vision_transformer as vits
 import dino.utils as utils
-from dino.eval_knn import KnnModule
+from dino.knn import do_knn_step
 from transformers.models.bert.modeling_bert import BertConfig, BertEmbeddings
 from sklearn.metrics import normalized_mutual_info_score
 
@@ -204,8 +204,7 @@ class DINOModel(pl.LightningModule):
         test_labels = output['labels']
         test_features = output['features']
         test_features = F.normalize(test_features, dim=1, p=2)
-        K = 20
-        top1, top5 = KnnModule.do_knn_step(self.knn_feats.T, self.knn_labels, test_features, test_labels,
+        top1, top5 = do_knn_step(self.knn_feats.T, self.knn_labels, test_features, test_labels,
                                            T=self.config['knn_temp'], k=self.config['nb_knn'], num_classes=1000)
         self.log(f'val/knn_top1', top1, on_step=False, prog_bar=True, on_epoch=True, sync_dist=True)
         self.log(f'val/knn_top5', top5, on_step=False, on_epoch=True, sync_dist=True)

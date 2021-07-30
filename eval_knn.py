@@ -8,6 +8,7 @@ import pytorch_lightning as pl
 from dino.config import ex
 from dino.modules import DINOModel
 from dino.imagenet_datamodule import ImageNetDataModule
+from dino.knn import do_knn_step
 import copy
 
 @torch.no_grad()
@@ -38,32 +39,6 @@ class KnnModule(pl.LightningModule):
     @property
     def automatic_optimization(self) -> bool:
         return False
-
-    @staticmethod
-    def do_knn_step(training_features, training_labels, test_features, test_labels, T, k, num_classes):
-        retrieval_one_hot = torch.zeros(k, num_classes).to(test_features.device)
-
-        # calculate the dot product and compute top-k neighbors
-        batch_size = test_features.size(0)
-        similarity = torch.mm(test_features, training_features)
-        distances, indices = similarity.topk(k, largest=True, sorted=True)
-        candidates = training_labels.view(1, -1).expand(batch_size, -1).long()
-        retrieved_neighbors = torch.gather(candidates, 1, indices)
-        retrieval_one_hot.resize_(batch_size * k, num_classes).zero_()
-        retrieval_one_hot.scatter_(1, retrieved_neighbors.view(-1, 1), 1)
-        distances_transform = distances.clone().div_(T).exp_()
-        probs = torch.sum(
-            torch.mul(
-                retrieval_one_hot.view(batch_size, -1, num_classes),
-                distances_transform.view(batch_size, -1, 1),
-            ), 1)
-        _, predictions = probs.sort(1, True)
-
-        # find the predictions that match the target
-        correct = predictions.eq(test_labels.data.view(-1, 1))
-        top1 = correct.narrow(1, 0, 1).sum()
-        top5 = correct.narrow(1, 0, 5).sum()
-        return top1, top5
 
     def forward(self, image):
         with torch.no_grad():
@@ -106,8 +81,8 @@ class KnnModule(pl.LightningModule):
         top1 = torch.zeros(1).to(features.device)
         top5 = torch.zeros(1).to(features.device)
         if dist.get_rank() == 0 and self.features is not None:
-            top1, top5 = self.do_knn_step(self.features, self.labels, features, labels,
-                                          self.t, self.K, num_classes=self.num_classes)
+            top1, top5 = do_knn_step(self.features, self.labels, features, labels,
+                                     self.t, self.K, num_classes=self.num_classes)
         dist.barrier()
         dist.broadcast(top1, 0)
         dist.broadcast(top5, 0)
