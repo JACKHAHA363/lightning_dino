@@ -143,6 +143,7 @@ class DINOModel(pl.LightningModule):
             last_layer = self.student.head.last_layer
             self.log("dino/last_layer_norm_avg", last_layer.weight_g.mean().item())
             self.log("dino/last_layer_direction_var", last_layer.weight_v.var(dim=0).mean().item())
+            self.log("dino/last_layer_weight_v_norm", last_layer.weight_v.norm(p=2, dim=1).mean().item())
             self.log("dino/center_mean", self.dino_loss.center.mean().item())
             self.log("dino/center_var", self.dino_loss.center.var().item())
             self.log("dino/teacher_var", teacher_embs.var(dim=0).mean().item())
