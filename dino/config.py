@@ -39,6 +39,7 @@ def config():
     num_heads = 6
     mlp_ratio=4
     drop_rate=0.1
+    bottleneck_dim=256
 
     # Optimizer Setting
     optim_type = "adamw"

@@ -27,12 +27,15 @@ class DINOModel(pl.LightningModule):
             embed_dim, 
             config['nmb_centroids'],
             use_bn=config['use_bn_in_head'],
-            norm_last_layer=config['norm_last_layer']))
+            norm_last_layer=config['norm_last_layer'],
+            bottleneck_dim=config['bottleneck_dim'],
+            ))
         self.teacher = utils.MultiCropWrapper(
             teacher,
             vits.DINOHead(
                 embed_dim, config['nmb_centroids'], 
-                config['use_bn_in_head']))
+                config['use_bn_in_head'],
+                bottleneck_dim=config['bottleneck_dim']))
 
         self.teacher.load_state_dict(self.student.state_dict())
         for p in self.teacher.parameters():
@@ -68,6 +71,7 @@ class DINOModel(pl.LightningModule):
                 config['vocab_size'],
                 norm_last_layer=config['norm_last_layer'],
                 last_layer=self.student.head.last_layer,
+                bottleneck_dim=config['bottleneck_dim']
                 )
 
         # Schedules
