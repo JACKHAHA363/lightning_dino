@@ -69,6 +69,7 @@ def config():
     precision = 16
 
     # DINO setting
+    init_word_emb = False
     nmb_centroids = 65536
     norm_last_layer = True
     use_subword_in_last_layer = False
@@ -94,3 +95,10 @@ def config():
 @ex.named_config
 def task_dino_mlm():
     text_dataset = 'cc'
+
+@ex.named_config
+def task_dino_word_emb_init():
+    nmb_centroids = 30522
+    bottleneck_dim = 768
+    init_word_emb = True
+ 

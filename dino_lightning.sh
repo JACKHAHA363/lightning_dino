@@ -14,12 +14,12 @@ echo "Running on `hostname`"
 srun $PYTHONBIN run_dino.py with \
 	data_root=/data/home/lyuchen/scratch2/vilt_dataset \
 	num_workers=12 \
-    exp_name=dino_30k_768 num_gpus=4 num_nodes=4 \
- 	seed=6666 max_epoch=100 nmb_centroids=30522 bottleneck_dim=768
+    exp_name=dino_30k_768_word_emb num_gpus=4 num_nodes=4 \
+ 	seed=6666 max_epoch=100 task_dino_word_emb_init
 
 #$PYTHONBIN run_dino.py with \
 #	fast_dev_run=5 \
 #	data_root=/data/home/lyuchen/scratch2/vilt_dataset \
 #	num_workers=12 \
 #    exp_name=dino_30k_768 num_gpus=1 num_nodes=1 \
-# 	seed=6666 max_epoch=100 nmb_centroids=30522 bottleneck_dim=768
+# 	seed=6666 max_epoch=100 task_dino_word_emb_init

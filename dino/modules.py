@@ -6,7 +6,7 @@ import numpy as np
 import dino.vision_transformer as vits
 import dino.utils as utils
 from dino.knn import do_knn_step
-from transformers.models.bert.modeling_bert import BertConfig, BertEmbeddings
+from transformers.models.bert.modeling_bert import BertConfig, BertEmbeddings, BertModel
 from sklearn.metrics import normalized_mutual_info_score
 
 class DINOModel(pl.LightningModule):
@@ -21,7 +21,17 @@ class DINOModel(pl.LightningModule):
         teacher = vits.__dict__[config['arch']](
             patch_size=config['patch_size'])
         embed_dim = student.embed_dim
-   
+
+        # Init from pretrained word emb
+        pretrained_word_embs = None
+        if config['init_word_emb']:
+            print('Initialize with pretrained word emb...')
+            assert config['nmb_centroids'] == config['vocab_size']
+            pretrained_transformer = BertModel.from_pretrained(config['tokenizer'])
+            pretrained_word_embs = pretrained_transformer.embeddings.word_embeddings.weight
+            assert config['vocab_size'] == pretrained_word_embs.shape[0]
+            assert config['bottleneck_dim'] == pretrained_word_embs.shape[1]
+
         # multi-crop wrapper handles forward with inputs of different resolutions
         self.student = utils.MultiCropWrapper(student, vits.DINOHead(
             embed_dim, 
@@ -29,6 +39,7 @@ class DINOModel(pl.LightningModule):
             use_bn=config['use_bn_in_head'],
             norm_last_layer=config['norm_last_layer'],
             bottleneck_dim=config['bottleneck_dim'],
+            last_layer_weight=pretrained_word_embs,
             ))
         self.teacher = utils.MultiCropWrapper(
             teacher,
