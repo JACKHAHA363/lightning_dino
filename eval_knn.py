@@ -34,7 +34,7 @@ class KnnModule(pl.LightningModule):
         self.labels = None
         # pretrained model
         self.num_classes = num_classes
-        self.model = DINOModel.load_from_checkpoint(ckpt_path)
+        self.model = DINOModel.load_from_checkpoint(ckpt_path, strict=False)
     
     @property
     def automatic_optimization(self) -> bool:

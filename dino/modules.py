@@ -23,14 +23,14 @@ class DINOModel(pl.LightningModule):
         embed_dim = student.embed_dim
 
         # Init from pretrained word emb
-        pretrained_word_embs = None
-        if config['init_word_emb']:
+        self.pretrained_word_embs = None
+        if config.get('init_word_emb', False):
             print('Initialize with pretrained word emb...')
             assert config['nmb_centroids'] == config['vocab_size']
             pretrained_transformer = BertModel.from_pretrained(config['tokenizer'])
-            pretrained_word_embs = pretrained_transformer.embeddings.word_embeddings.weight
-            assert config['vocab_size'] == pretrained_word_embs.shape[0]
-            assert config['bottleneck_dim'] == pretrained_word_embs.shape[1]
+            self.pretrained_word_embs = pretrained_transformer.embeddings.word_embeddings.weight
+            assert config['vocab_size'] == self.pretrained_word_embs.shape[0]
+            assert config['bottleneck_dim'] == self.pretrained_word_embs.shape[1]
 
         # multi-crop wrapper handles forward with inputs of different resolutions
         self.student = utils.MultiCropWrapper(student, vits.DINOHead(
@@ -38,15 +38,15 @@ class DINOModel(pl.LightningModule):
             config['nmb_centroids'],
             use_bn=config['use_bn_in_head'],
             norm_last_layer=config['norm_last_layer'],
-            bottleneck_dim=config['bottleneck_dim'],
-            last_layer_weight=pretrained_word_embs,
+            bottleneck_dim=config.get('bottleneck_dim', 256),
+            last_layer_weight=self.pretrained_word_embs,
             ))
         self.teacher = utils.MultiCropWrapper(
             teacher,
             vits.DINOHead(
                 embed_dim, config['nmb_centroids'], 
                 config['use_bn_in_head'],
-                bottleneck_dim=config['bottleneck_dim']))
+                bottleneck_dim=config.get('bottleneck_dim', 256)))
 
         self.teacher.load_state_dict(self.student.state_dict())
         for p in self.teacher.parameters():
@@ -190,6 +190,9 @@ class DINOModel(pl.LightningModule):
         output = self.compute_dino(batch)
         if self.use_mlm:
             output.update(self.compute_mlm(batch))
+        if self.config.get('word_emb_reg_coef') > 0:
+            l2_loss = (self.student.head.last_layer.weight_v - self.pretrained_word_embs).pow(2).sum(-1).mean()
+            output['word_emb_l2_loss'] = self.config.get('word_emb_reg_coef') * l2_loss
         return output
 
     def training_step(self, batch, batch_idx):

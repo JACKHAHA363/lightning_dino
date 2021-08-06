@@ -70,6 +70,7 @@ def config():
 
     # DINO setting
     init_word_emb = False
+    word_emb_reg_coef = 0 # l2 reg between centroid and word emb
     nmb_centroids = 65536
     norm_last_layer = True
     use_subword_in_last_layer = False
