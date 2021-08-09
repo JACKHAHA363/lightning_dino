@@ -32,4 +32,7 @@ for batch in tqdm.tqdm(val_loader):
         probs = nn.functional.softmax(logits, dim=-1)
     for prob, label in zip(probs, batch['imagenet_label']):
         conf_mat[label.cuda()] += prob
-torch.save(conf_mat, "./conf_mat.pkl")
+torch.save(
+    {'conf_mat': conf_mat, 
+     'classes': val_loader.dataset.imagefolder.classes}, 
+    "./conf_mat.pkl")
