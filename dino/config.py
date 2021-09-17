@@ -69,7 +69,7 @@ def config():
     precision = 16
 
     # DINO setting
-    init_word_emb = False
+    init_word_emb = None
     word_emb_reg_coef = 0 # l2 reg between centroid and word emb
     nmb_centroids = 65536
     norm_last_layer = True
@@ -101,5 +101,11 @@ def task_dino_mlm():
 def task_dino_word_emb_init():
     nmb_centroids = 30522
     bottleneck_dim = 768
-    init_word_emb = True
+    init_word_emb = 'bert'
+ 
+@ex.named_config
+def task_dino_clip_init():
+    nmb_centroids = 80000
+    bottleneck_dim = 512
+    init_word_emb = 'clip'
  

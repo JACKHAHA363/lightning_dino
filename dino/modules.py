@@ -24,14 +24,34 @@ class DINOModel(pl.LightningModule):
 
         # Init from pretrained word emb
         self.pretrained_word_embs = None
-        if config.get('init_word_emb', False):
-            print('Initialize with pretrained word emb...')
-            assert config['nmb_centroids'] == config['vocab_size']
-            pretrained_transformer = BertModel.from_pretrained(config['tokenizer'])
-            self.pretrained_word_embs = pretrained_transformer.embeddings.word_embeddings.weight
-            assert config['vocab_size'] == self.pretrained_word_embs.shape[0]
+        if config.get('init_word_emb', None) is not None:
+            if config['init_word_emb'] == 'bert':
+                print('Initialize with pretrained bert word emb...')
+                assert config['nmb_centroids'] == config['vocab_size']
+                pretrained_transformer = BertModel.from_pretrained(config['tokenizer'])
+                self.pretrained_word_embs = pretrained_transformer.embeddings.word_embeddings.weight
+            elif config['init_word_emb'] == 'clip':
+                print('Initialize with CLIP prompt embs')
+                from clip.clip import tokenize, load
+                from clip.imagenet_zeroshot_data import imagenet_classnames, openai_imagenet_template
+                from tqdm import tqdm
+                model, _, _ = load('ViT-B/32', device='cuda', jit=False)
+                model.eval()
+                with torch.no_grad():
+                    all_prompts = []
+                    for classname in tqdm(imagenet_classnames):
+                        texts = [template(classname) for template in openai_imagenet_template]
+                        text_ids = tokenize(texts).cuda() #tokenize
+                        text_embs = model.encode_text(text_ids)
+                        all_prompts.append(text_embs)
+                self.pretrained_word_embs = torch.cat(all_prompts, dim=0)
+            else:
+                raise ValueError("invalid word emb choice {}".format(config['init_word_emb']))
+            
+            # Make sure shape matchs
+            assert config['nmb_centroids'] == self.pretrained_word_embs.shape[0]
             assert config['bottleneck_dim'] == self.pretrained_word_embs.shape[1]
-
+ 
         # multi-crop wrapper handles forward with inputs of different resolutions
         self.student = utils.MultiCropWrapper(student, vits.DINOHead(
             embed_dim, 
@@ -166,7 +186,7 @@ class DINOModel(pl.LightningModule):
         return {'loss': loss, 
                 'features': teacher_embs[:images[0].size(0), :].detach(),
                 'cluster_assignments': teacher_output[:images[0].size(0), :].argmax(-1).detach(),
-                'labels': torch.tensor(batch[self.config['dino_label_key']]).long().cuda()}
+                'labels': batch[self.config['dino_label_key']].long().cuda()}
 
     def compute_mlm(self, batch):
         text_ids = batch[f"text_ids_mlm"]
